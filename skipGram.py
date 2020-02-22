@@ -66,7 +66,7 @@ class SkipGram:
         self.winSize=winSize
         self.minCount=minCount
         self.w=np.random.uniform(-0.8,0.8,(len(self.vocab),self.nEmbed))
-        self.w2 = np.random.uniform(-0.8, 0.8, (self.nEmbed, len(self.vocab))) 
+        self.w2 = np.random.uniform(-0.8, 0.8, (len(self.vocab),self.nEmbed)) 
         self.alpha = 0.001
         #raise NotImplementedError('implement it!')
         
@@ -126,8 +126,8 @@ class SkipGram:
                     ctxtId = self.w2id[context_word]
                     if ctxtId == wIdx: continue
                     negativeIds = self.sample({wIdx, ctxtId})
-                    sample_id=negativeIds.append(wIdx)
-                    self.trainWord(wIdx, ctxtId, sample_id)
+                    negativeIds.append(wIdx)
+                    self.trainWord(wIdx, ctxtId, negativeIds)
                     self.trainWords += 1    #What is the meaning of this variable? I think it is the size of the  context
                     
                     
@@ -142,10 +142,36 @@ class SkipGram:
         size_input=len(self.vocab)
         x_train = [0 for x in range(size_input)] 
         y_train = [0 for x in range(size_input)] 
+        context=[0 for x in range(size_input)]
+        context[contextId]=1
         x_train[wordId]=1
         y_train[contextId]=1
-        self.forward_propagate(x_train)
-        self.back_propagate(y_train,x_train,sample_id)
+        list_sampling=[]
+        for i in sample_id:
+            sampling=[0 for x in range(size_input)]
+            sampling[i]=1
+            list_sampling.append(sampling)
+        
+        #self.forward_propagate(x_train)
+        #self.back_propagate(y_train,x_train,sample_id)
+                # draw K negative samples from P_nw
+        self.hidden_layer = np.dot(self.w.T,x_train).reshape(self.nEmbed,1) 
+
+        grad_V_output_pos = (self.softmax(context * self.hidden_layer) - 1) *self.hidden_layer   # h or w
+        grad_V_input = (self.softmax(context * self.hidden_layer) - 1) * context
+        grad_V_output_neg_list = []
+        
+        for negword in list_sampling:
+            grad_V_output_neg_list.append(self.softmax(negword * self.hidden_layer) * self.hidden_layer)
+            grad_V_input += self.softmax(negword * self.hidden_layer) * negword
+        # use SGD to update w, c_pos, and c_neg_1, ... , c_neg_K
+        print("la liiiiiiiste")
+        print(grad_V_output_pos[0])
+        self.w2[contextId,:] = self.w2[contextId,:] - self.alpha * grad_V_output_pos
+        self.w[contextId,:] = self.w[contextId,:] - alpha * grad_V_input
+
+      #  for grad_V_output_neg in grad_V_output_neg_list:
+      #      w2[] = w2[] - self.alpha * grad_V_output_neg
         #raise NotImplementedError('here is all the fun!')
         
     def save(self,path):
