@@ -1,17 +1,20 @@
 from __future__ import division
 import argparse
 import pandas as pd
-
-
+import time
+import json
 
 # useful stuff
 import numpy as np
 from scipy.special import expit
 from sklearn.preprocessing import normalize
+import scipy
+import logging
+
 
 import spacy
 from sklearn.feature_extraction.text import CountVectorizer
-
+from sklearn.metrics.pairwise import cosine_similarity
 
 __authors__ = ['Raphael Attali','Ariel Modai','Niels Nicolas','Michael Allouche']
 __emails__  = ['fatherchristmoas@northpole.dk','toothfairy@blackforest.no','easterbunny@greenfield.de']
@@ -68,6 +71,10 @@ class SkipGram:
         self.w=np.random.uniform(-0.8,0.8,(len(self.vocab),self.nEmbed))
         self.w2 = np.random.uniform(-0.8, 0.8, (len(self.vocab),self.nEmbed)) 
         self.alpha = 0.001
+        self.trainWords=0
+        self.accLoss=0
+        self.loss=[]
+        
         #raise NotImplementedError('implement it!')
         
     def sample(self, omit): 
@@ -79,6 +86,7 @@ class SkipGram:
         number_positive=0
         negativeIds=[]
         while sample_positive==1:
+            number_positive=0
             sampled_list=np.random.choice(list(probability_occur.keys()), size=self.negativeRate, p=list(probability_occur.values()))
             for negative_word in sampled_list:
                 if self.w2id[negative_word] in omit:
@@ -95,24 +103,10 @@ class SkipGram:
     def softmax(self,x):
         return np.exp(x)/sum(np.exp(x))
        
-    def forward_propagate(self,x_train): 
-        self.hidden_layer = np.dot(self.w.T,x_train).reshape(self.nEmbed,1) 
-        self.u = np.dot(self.w2.T,self.hidden_layer) 
-        self.y_pred = self.softmax(self.u)   
 
-    def back_propagate(self,y_train,x_train,sample_id):
-        error=self.y_pred-y_train
-        
-        dL_dw2=np.dot(self.hidden_layer,error.T)
-        x_reshape= np.array(x_train).reshape(len(self.x_train),1) 
-        dL_dw=np.dot(x_train[[i for i in sample_id]],np.dot(self.w2,error).T)
-        
-        self.w=self.w-self.alpha*dL_dw
-        self.w2=self.w2-self.alpha*dL_dw2
-        
-        acjdi
-   
+           
     def train(self):
+        logging.basicConfig(filename='example.log',level=logging.DEBUG)
         for counter, sentence in enumerate(self.trainset):
             sentence = filter(lambda word: word in self.vocab, sentence)
 
@@ -121,22 +115,30 @@ class SkipGram:
                 winsize = np.random.randint(self.winSize) + 1
                 start = max(0, wpos - winsize)
                 end = min(wpos + winsize + 1, len(sentence))
-                self.trainWords=0
                 for context_word in sentence[start:end]:
                     ctxtId = self.w2id[context_word]
                     if ctxtId == wIdx: continue
                     negativeIds = self.sample({wIdx, ctxtId})
                     negativeIds.append(wIdx)
                     self.trainWord(wIdx, ctxtId, negativeIds)
-                    self.trainWords += 1    #What is the meaning of this variable? I think it is the size of the  context
-                    
-                    
+                    self.trainWords += 1    #number of iterations
+                    print(" number couple trained ")
+                    print(self.trainWords)
+            print("Niels est un petit juif")
+            print(counter)  
+            #time.sleep(4)
             if counter % 1000 == 0:
                 print (' > training %d of %d' % (counter, len(self.trainset)))
                 self.loss.append(self.accLoss / self.trainWords)
                 self.trainWords = 0 
                 self.accLoss = 0.
-    
+            logging.debug(self.loss)
+            if counter==1003:
+                print("counter 4000")
+                break
+            
+
+            
     
     def trainWord(self, wordId, contextId, sample_id):
         size_input=len(self.vocab)
@@ -150,45 +152,75 @@ class SkipGram:
         for i in sample_id:
             sampling=[0 for x in range(size_input)]
             sampling[i]=1
+            sampling=np.asarray(sampling)
             list_sampling.append(sampling)
         
-        #self.forward_propagate(x_train)
-        #self.back_propagate(y_train,x_train,sample_id)
-                # draw K negative samples from P_nw
-        self.hidden_layer = np.dot(self.w.T,x_train).reshape(self.nEmbed,1) 
+        #convert list in numpy
+        x_train=np.asarray(x_train)
+        y_train=np.asarray(y_train)
+        context=np.asarray(context)
 
-        grad_V_output_pos = (self.softmax(context * self.hidden_layer) - 1) *self.hidden_layer   # h or w
-        grad_V_input = (self.softmax(context * self.hidden_layer) - 1) * context
+
+        self.hidden_layer = np.dot(self.w.T,x_train).reshape(self.nEmbed,1)
+        self.u = np.dot(self.w2,self.hidden_layer) 
+        self.y_pred = self.softmax(self.u) 
+        self.accLoss=-np.log(self.softmax(self.w2[contextId,:].T * self.hidden_layer.T))
+        for id_sample in sample_id:
+            self.accLoss=self.accLoss-np.log(self.softmax(-self.w2[id_sample,:].T * self.hidden_layer.T))
+            
+            
+        grad_V_output_pos = (self.softmax(self.w2[contextId,:].T * self.hidden_layer.T) - 1) *self.hidden_layer.T  # h or w
+        grad_V_input = (self.softmax(self.w2[contextId,:].T * self.hidden_layer.T) - 1) * self.w2[contextId,:].T
         grad_V_output_neg_list = []
         
-        for negword in list_sampling:
-            grad_V_output_neg_list.append(self.softmax(negword * self.hidden_layer) * self.hidden_layer)
-            grad_V_input += self.softmax(negword * self.hidden_layer) * negword
+        for id_sample in sample_id:
+            grad_V_output_neg_list.append(self.softmax(self.w2[id_sample,:].T * self.hidden_layer.T) * self.hidden_layer.T)
+            grad_V_input += self.softmax(self.w2[id_sample,:].T * self.hidden_layer.T) * self.w2[id_sample,:].T
         # use SGD to update w, c_pos, and c_neg_1, ... , c_neg_K
-        print("la liiiiiiiste")
-        print(grad_V_output_pos[0])
-        self.w2[contextId,:] = self.w2[contextId,:] - self.alpha * grad_V_output_pos
-        self.w[contextId,:] = self.w[contextId,:] - alpha * grad_V_input
 
-      #  for grad_V_output_neg in grad_V_output_neg_list:
-      #      w2[] = w2[] - self.alpha * grad_V_output_neg
-        #raise NotImplementedError('here is all the fun!')
+        self.w2[contextId,:] = self.w2[contextId,:] - self.alpha * grad_V_output_pos
+        self.w[contextId,:] = self.w[contextId,:] - self.alpha * grad_V_input
         
     def save(self,path):
-        #print("not implemented")
-	    raise NotImplementedError('implement it!')
+        parameters={
+            "input_weights":self.w.tolist(),
+            "output_weights":self.w2.tolist(),
+            "vocab":self.vocab,
+            "w2id":self.w2id
+        }
+        json.dump(parameters,open(path,'wt'))
         
     def similarity(self,word1,word2):
-	    #"""
+        self.w=np.asarray(self.w)
+        self.w2=np.asarray(self.w2)
+        self.w=self.w.reshape((len(self.vocab),self.nEmbed))
+        self.w2=self.w2.reshape((len(self.vocab),self.nEmbed))
+        #cosine=cosine_similarity(self.w[self.w2id[a],:], self.w[self.w2id[b],:], dense_output=True)
+        if a not in self.vocab or b not in self.vocab:
+            return 0
+        else:
+            cosine=scipy.spatial.distance.cosine(self.w[self.w2id[a],:], self.w[self.w2id[b],:])
+            logging.debug(cosine)
+            return cosine
+    #print('Word Embedding method with a cosine distance asses that our two sentences are similar to',round((1-cosine)*100,2),'%')
+        #"""
 		#computes similiarity between the two words. unknown words are mapped to one common vector
         #:param word1:
         #:param word2:
         #:return: a float \in [0,1] indicating the similarity (the higher the more similar)
         #"""
-        raise NotImplementedError('implement it!')
+        #raise NotImplementedError('implement it!')
     @staticmethod
     def load(path):
-        raise NotImplementedError('implement it!')
+        with open(path) as json_file:
+            data_j = json.load(json_file)
+            sg=SkipGram(" ")
+            sg.w=data_j["input_weights"]
+            sg.w2=data_j["output_weights"]
+            sg.vocab=data_j["vocab"]
+            sg.w2id=data_j["w2id"]
+            return sg
+        #raise NotImplementedError('implement it!')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -206,11 +238,10 @@ if __name__ == '__main__':
         sg = SkipGram.load(opts.model)
         for a,b,_ in pairs:
              # make sure this does not raise any exception, even if a or b are not in sg.vocab
+            
+            #print(a,b)
             print(sg.similarity(a,b))
 
 ##############
-#In order to test without command lines
-#f=open("train.txt","r")            
-#text=f.read()
-#sentences = text2sentences(text)
+
 
