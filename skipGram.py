@@ -1,7 +1,7 @@
 from __future__ import division
 import argparse
 import pandas as pd
-import time
+#import time
 import json
 
 # useful stuff
@@ -10,30 +10,24 @@ from scipy.special import expit
 from sklearn.preprocessing import normalize
 import scipy
 import logging
-
-
 import spacy
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 __authors__ = ['Raphael Attali','Ariel Modai','Niels Nicolas','Michael Allouche']
-__emails__  = ['fatherchristmoas@northpole.dk','toothfairy@blackforest.no','easterbunny@greenfield.de']
+__emails__  = ['raphael.attali@student-cs.fr','niels.nicolas@student-cs.fr','ariel.modai@student-cs.fr','michael.allouche@student-cs.fr']
   
 def text2sentences(path):
 	# feel free to make a better tokenization/pre-processing
-    #spacy_nlp = spacy.load("en_core_web_sm")
+    spacy_nlp = spacy.load("en_core_web_sm")
     sentences = []
     with open(path) as f:
         for l in f:
-            #string= l.lower().split()
-            #spacy_tokens=spacy_nlp(string)
-            #string_tokens = [token.orth_ for token in spacy_tokens]  
-            #spacy_tokens_join = " ".join(string_tokens)
-            #sentences.append(spacy_tokens_join)   
-            #vectorizer = CountVectorizer()
-            #X_sample = vectorizer.fit_transform(sentences)
-            #vectorizer.get_feature_names()
-            sentences.append( l.lower().split() )
+            sentences.append([token.lemma_.replace(' ','_').lower() for token in spacy_nlp(l) if (len(token.lemma_)>2)
+            and (token.lemma_ in spacy_nlp.vocab) and (',' not in token.lemma_)
+            and('.' not in token.lemma_) and ('\n' not in token.text)
+            and (not token.is_stop) and (not token.is_punct)
+            and (not token.is_digit) and (not token.is_space)])
     return sentences
 
 def loadPairs(path):
@@ -122,8 +116,6 @@ class SkipGram:
                     negativeIds.append(wIdx)
                     self.trainWord(wIdx, ctxtId, negativeIds)
                     self.trainWords += 1    #number of iterations
-                    print(" number couple trained ")
-                    print(self.trainWords)
             print("Niels est un petit juif")
             print(counter)  
             #time.sleep(4)
@@ -134,7 +126,7 @@ class SkipGram:
                 self.accLoss = 0.
             logging.debug(self.loss)
             if counter==1003:
-                print("counter 4000")
+                print("counter 1003")
                 break
             
 
@@ -147,27 +139,18 @@ class SkipGram:
         context=[0 for x in range(size_input)]
         context[contextId]=1
         x_train[wordId]=1
-        y_train[contextId]=1
-        list_sampling=[]
-        for i in sample_id:
-            sampling=[0 for x in range(size_input)]
-            sampling[i]=1
-            sampling=np.asarray(sampling)
-            list_sampling.append(sampling)
-        
+        y_train[contextId]=1        
         #convert list in numpy
         x_train=np.asarray(x_train)
         y_train=np.asarray(y_train)
         context=np.asarray(context)
-
-
         self.hidden_layer = np.dot(self.w.T,x_train).reshape(self.nEmbed,1)
-        self.u = np.dot(self.w2,self.hidden_layer) 
-        self.y_pred = self.softmax(self.u) 
+        #print(self.hidden_layer.shape)
+        #self.u = np.dot(self.w2,self.hidden_layer) 
+        #self.y_pred = self.softmax(self.u) 
         self.accLoss=-np.log(self.softmax(self.w2[contextId,:].T * self.hidden_layer.T))
         for id_sample in sample_id:
             self.accLoss=self.accLoss-np.log(self.softmax(-self.w2[id_sample,:].T * self.hidden_layer.T))
-            
             
         grad_V_output_pos = (self.softmax(self.w2[contextId,:].T * self.hidden_layer.T) - 1) *self.hidden_layer.T  # h or w
         grad_V_input = (self.softmax(self.w2[contextId,:].T * self.hidden_layer.T) - 1) * self.w2[contextId,:].T
