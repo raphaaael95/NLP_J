@@ -23,16 +23,22 @@ def text2sentences(path):
     sentences = []
     with open(path) as f:
         for l in f:
-            sentences.append([token.lemma_.replace(' ','_').lower() for token in spacy_nlp(l) if (len(token.lemma_)>2)
-            and (token.lemma_ in spacy_nlp.vocab) and (',' not in token.lemma_)
-            and('.' not in token.lemma_) and ('\n' not in token.text)
-            and (not token.is_stop) and (not token.is_punct)
-            and (not token.is_digit) and (not token.is_space)])
+            sentences.append([token.lemma_.replace(" ","_").lower() for token in spacy_nlp(l) if (len(token.lemma_)>2)
+                and (token.lemma_ in spacy_nlp.vocab) and ("," not in token.lemma_)
+                and('.' not in token.lemma_) and ("\n" not in token.text)
+                and (not token.is_stop) and (not token.is_punct)
+                and (not token.is_digit) and (not token.is_space)])
     return sentences
 
 def loadPairs(path):
     data = pd.read_csv(path, delimiter='\t')
-    pairs = zip(data['word1'],data['word2'],data['similarity'])
+    logging.basicConfig(filename='example.log',level=logging.DEBUG)
+    logging.debug("verify data")
+    logging.debug(data)
+    logging.debug("shape")
+    logging.debug(data.shape)
+    #text2sentences(data)
+    pairs = zip(data['word1'],data['word2'],data['similarity']) 
     return pairs
     
 class SkipGram:
@@ -100,9 +106,10 @@ class SkipGram:
 
            
     def train(self):
-        logging.basicConfig(filename='example.log',level=logging.DEBUG)
+    
         for counter, sentence in enumerate(self.trainset):
             sentence = filter(lambda word: word in self.vocab, sentence)
+            sentence = list(sentence)
 
             for wpos, word in enumerate(sentence):
                 wIdx = self.w2id[word]
@@ -124,8 +131,8 @@ class SkipGram:
                 self.loss.append(self.accLoss / self.trainWords)
                 self.trainWords = 0 
                 self.accLoss = 0.
-            logging.debug(self.loss)
-            if counter==1003:
+            #logging.debug(self.loss)
+            if counter==2:
                 print("counter 1003")
                 break
             
@@ -183,7 +190,7 @@ class SkipGram:
             return 0
         else:
             cosine=scipy.spatial.distance.cosine(self.w[self.w2id[a],:], self.w[self.w2id[b],:])
-            logging.debug(cosine)
+            #logging.debug(cosine)
             return cosine
     #print('Word Embedding method with a cosine distance asses that our two sentences are similar to',round((1-cosine)*100,2),'%')
         #"""
@@ -220,6 +227,7 @@ if __name__ == '__main__':
         pairs = loadPairs(opts.text)
         sg = SkipGram.load(opts.model)
         for a,b,_ in pairs:
+            
              # make sure this does not raise any exception, even if a or b are not in sg.vocab
             
             #print(a,b)
